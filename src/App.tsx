@@ -1,157 +1,316 @@
 import { useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "./components/ui/card";
-import { ScrollArea } from "./components/ui/scroll-area";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
 import { Button } from "./components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { CopyIcon, CheckIcon } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
+import { Textarea } from "./components/ui/textarea";
+import RunDashboard from "./RunDashboard";
 import "./App.css";
 
-// Mock data based on the provided example
-const mockRunData = {
-  id: "run_123456",
-  status: "completed",
-  created_at: "2024-08-13T15:55:08.000Z",
-  metadata: {
-    total_tokens: 3500,
-    prompt_tokens: 1200,
-    completion_tokens: 2300,
-    total_cost: 0.07,
-  },
-  chat_history: [
-    {
-      role: "system",
-      content: "you are an expert summarizer",
-    },
-    {
-      role: "user",
-      content:
-        "Here's a collection of tweets from the Twitter list 'Mentors 50k+':\n\nTweet by ItsKieranDrew (2024-08-13 15:55:08.000000Z):\nWhy?\n\nBecause social media is focused on cold outreach and content. Both are a low-leverage treadmill.\n\nEmail you're creating inbound. You can automate the emails too so that you can build 90% of your business to operate without you.\n\nSocial is good for attention. But please, email is the end game.\n 22, url: https://twitter.com/ItsKieranDrew/status/1823387823078085059\n\n[... truncated for brevity ...]",
-    },
-    {
-      role: "user",
-      content: "return me the top 50 tweets",
-    },
-    {
-      role: "assistant",
-      content:
-        "Here are the top 50 tweets from the collection:\n\n1. **ItsKieranDrew**: Why? Because social media is focused on cold outreach and content. Email is the end game. [View Tweet](https://twitter.com/ItsKieranDrew/status/1823387823078085059)\n   \n2. **Codie_Sanchez**: The wealthy often benefit from how confusing finance and business is. But I believe we should get rich together. [View Tweet](https://twitter.com/Codie_Sanchez/status/1823389130048295070)\n\n[... truncated for brevity ...]",
-    },
-  ],
+type Pipeline = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  pipeline_name: string;
+  data_fetch_end_time: string;
+  data_fetch_duration_hours: number;
+  fetch_count_limit: number | null;
+  list_id: number;
+  models: string[];
+  messages: string[];
+  system_prompt: string;
+  overrides: Record<string, any> | null;
 };
 
-export default function App() {
-  const [copied, setCopied] = useState(false);
+type Run = {
+  run_id: string;
+  oban_job_id: number | null;
+  run_status: string | null;
+  result: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+};
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+// Mock data
+const mockPipelines: Pipeline[] = [
+  {
+    id: "1",
+    created_at: "2023-07-01T00:00:00Z",
+    updated_at: "2023-07-01T00:00:00Z",
+    pipeline_name: "Tech News",
+    data_fetch_end_time: "2023-07-02T00:00:00Z",
+    data_fetch_duration_hours: 24,
+    fetch_count_limit: 1000,
+    list_id: 1234,
+    models: ["gpt-3.5-turbo"],
+    messages: ["Summarize the latest tech news"],
+    system_prompt: "You are a tech news summarizer",
+    overrides: null,
+  },
+];
+
+const mockRuns: Run[] = [
+  {
+    run_id: "1",
+    oban_job_id: 5678,
+    run_status: "completed",
+    result: { summary: "Tech news summary..." },
+    created_at: "2023-07-01T12:00:00Z",
+    updated_at: "2023-07-01T12:30:00Z",
+  },
+];
+
+export default function Component() {
+  const [pipelines, setPipelines] = useState<Pipeline[]>(mockPipelines);
+  const [runs, setRuns] = useState<Run[]>(mockRuns);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
+
+  const [newPipeline, setNewPipeline] = useState<
+    Omit<Pipeline, "id" | "created_at" | "updated_at">
+  >({
+    pipeline_name: "",
+    data_fetch_end_time: "",
+    data_fetch_duration_hours: 24,
+    fetch_count_limit: null,
+    list_id: 0,
+    models: [],
+    messages: [],
+    system_prompt: "",
+    overrides: null,
+  });
+
+  const handleCreatePipeline = () => {
+    const pipeline: Pipeline = {
+      ...newPipeline,
+      id: (pipelines.length + 1).toString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setPipelines([...pipelines, pipeline]);
+    setNewPipeline({
+      pipeline_name: "",
+      data_fetch_end_time: "",
+      data_fetch_duration_hours: 24,
+      fetch_count_limit: null,
+      list_id: 0,
+      models: [],
+      messages: [],
+      system_prompt: "",
+      overrides: null,
     });
   };
 
-  const lastAssistantMessage = mockRunData.chat_history
-    .filter((msg) => msg.role === "assistant")
-    .pop();
+  const handleCreateRun = () => {
+    if (selectedPipelineId) {
+      const newRun: Run = {
+        run_id: (runs.length + 1).toString(),
+        oban_job_id: null,
+        run_status: "queued",
+        result: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setRuns([...runs, newRun]);
+    }
+  };
 
   return (
     <div className="container mx-auto p-4">
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Run Details</CardTitle>
-          <CardDescription>ID: {mockRunData.id}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm font-medium">Status</p>
-              <p className="text-lg">{mockRunData.status}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Created At</p>
-              <p className="text-lg">
-                {new Date(mockRunData.created_at).toLocaleString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Total Tokens</p>
-              <p className="text-lg">{mockRunData.metadata.total_tokens}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Prompt Tokens</p>
-              <p className="text-lg">{mockRunData.metadata.prompt_tokens}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Completion Tokens</p>
-              <p className="text-lg">
-                {mockRunData.metadata.completion_tokens}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Total Cost</p>
-              <p className="text-lg">
-                ${mockRunData.metadata.total_cost.toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Tabs defaultValue="final-output">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="final-output">Final Output</TabsTrigger>
-          <TabsTrigger value="chat-history">Chat History</TabsTrigger>
+      <Tabs defaultValue="create-pipeline">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="create-pipeline">Create Pipeline</TabsTrigger>
+          <TabsTrigger value="create-run">Create Run</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="schedules">Schedules</TabsTrigger>
         </TabsList>
-        <TabsContent value="final-output">
+        <TabsContent value="create-pipeline">
           <Card>
             <CardHeader>
-              <CardTitle>Final Output</CardTitle>
-              <CardDescription>Last assistant message</CardDescription>
+              <CardTitle>Create New Pipeline</CardTitle>
+              <CardDescription>
+                Set up a new pipeline for Twitter list scraping and
+                summarization.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[400px] w-full rounded-md border p-4">
-                <pre className="whitespace-pre-wrap">
-                  {lastAssistantMessage?.content}
-                </pre>
-              </ScrollArea>
-              <Button
-                className="mt-4"
-                onClick={() =>
-                  copyToClipboard(lastAssistantMessage?.content || "")
-                }
-              >
-                {copied ? (
-                  <CheckIcon className="mr-2 h-4 w-4" />
-                ) : (
-                  <CopyIcon className="mr-2 h-4 w-4" />
-                )}
-                {copied ? "Copied!" : "Copy to Clipboard"}
-              </Button>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="pipeline-name">Pipeline Name</Label>
+                <Input
+                  id="pipeline-name"
+                  value={newPipeline.pipeline_name}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      pipeline_name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="data-fetch-end-time">Data Fetch End Time</Label>
+                <Input
+                  id="data-fetch-end-time"
+                  type="datetime-local"
+                  value={newPipeline.data_fetch_end_time}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      data_fetch_end_time: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="data-fetch-duration">
+                  Data Fetch Duration (hours)
+                </Label>
+                <Input
+                  id="data-fetch-duration"
+                  type="number"
+                  value={newPipeline.data_fetch_duration_hours}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      data_fetch_duration_hours: parseInt(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fetch-count-limit">Fetch Count Limit</Label>
+                <Input
+                  id="fetch-count-limit"
+                  type="number"
+                  value={newPipeline.fetch_count_limit || ""}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      fetch_count_limit: e.target.value
+                        ? parseInt(e.target.value)
+                        : null,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="list-id">Twitter List ID</Label>
+                <Input
+                  id="list-id"
+                  type="number"
+                  value={newPipeline.list_id}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      list_id: parseInt(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="models">Models (comma-separated)</Label>
+                <Input
+                  id="models"
+                  value={newPipeline.models.join(",")}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      models: e.target.value.split(","),
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="messages">Messages (comma-separated)</Label>
+                <Input
+                  id="messages"
+                  value={newPipeline.messages.join(",")}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      messages: e.target.value.split(","),
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="system-prompt">System Prompt</Label>
+                <Textarea
+                  id="system-prompt"
+                  value={newPipeline.system_prompt}
+                  onChange={(e) =>
+                    setNewPipeline({
+                      ...newPipeline,
+                      system_prompt: e.target.value,
+                    })
+                  }
+                />
+              </div>
             </CardContent>
+            <CardFooter>
+              <Button onClick={handleCreatePipeline}>Create Pipeline</Button>
+            </CardFooter>
           </Card>
         </TabsContent>
-        <TabsContent value="chat-history">
+        <TabsContent value="create-run">
           <Card>
             <CardHeader>
-              <CardTitle>Chat History</CardTitle>
-              <CardDescription>Full conversation</CardDescription>
+              <CardTitle>Create New Run</CardTitle>
+              <CardDescription>
+                Start a new run based on an existing pipeline.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="pipeline-select">Select Pipeline</Label>
+                <Select onValueChange={setSelectedPipelineId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a pipeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pipelines.map((pipeline) => (
+                      <SelectItem key={pipeline.id} value={pipeline.id}>
+                        {pipeline.pipeline_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button onClick={handleCreateRun} disabled={!selectedPipelineId}>
+                Start Run
+              </Button>
+            </CardFooter>
+          </Card>
+        </TabsContent>
+        <TabsContent value="dashboard">
+          <RunDashboard />
+        </TabsContent>
+        <TabsContent value="schedules">
+          <Card>
+            <CardHeader>
+              <CardTitle>Pipeline Schedules</CardTitle>
+              <CardDescription>
+                Manage schedules for your pipelines.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px] w-full rounded-md border p-4">
-                {mockRunData.chat_history.map((message, index) => (
-                  <div key={index} className="mb-4">
-                    <p className="font-semibold capitalize">{message.role}:</p>
-                    <pre className="whitespace-pre-wrap text-sm">
-                      {message.content}
-                    </pre>
-                  </div>
-                ))}
-              </ScrollArea>
+              <p>Schedule management functionality to be implemented.</p>
             </CardContent>
           </Card>
         </TabsContent>
